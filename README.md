@@ -1,6 +1,3 @@
-test 8
-
-
 # analytics
 bert testing!
 Testing
