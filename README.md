@@ -1,5 +1,2 @@
 # analytics
 bert testing!
-
-
-test
