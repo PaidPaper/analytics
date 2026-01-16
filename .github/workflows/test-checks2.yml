@@ -15,7 +15,7 @@ jobs:
         run: echo "Running tests..."
       
       - name: Wait (to see in-progress status)
-        run: sleep 8
+        run: sleep 9
       
       - name: Success
         run: echo "Tests passed!"
