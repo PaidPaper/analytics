@@ -1,0 +1,22 @@
+name: Test Checks2
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Simple test
+        run: echo "Running tests..."
+      
+      - name: Wait (to see in-progress status)
+        run: sleep 10
+        
+      
+      - name: Failure
+        run: exit 1
