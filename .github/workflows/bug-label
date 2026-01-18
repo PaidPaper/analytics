@@ -2,15 +2,10 @@ name: Test Bug Label Workflow
 
 on:
   pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - labeled
+    types: [labeled, opened, synchronize]  # Add these to test
 
 jobs:
   bug-label-test:
-    if: (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'bug')) || github.event.label.name == 'bug'
     runs-on: ubuntu-latest
     
     steps:
