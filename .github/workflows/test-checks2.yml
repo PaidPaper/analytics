@@ -19,4 +19,4 @@ jobs:
         
       
       - name: Success
-        run: echo "Tests passed!"
+        run: exit 1
