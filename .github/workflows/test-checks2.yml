@@ -8,6 +8,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    if: false  # This will always skip
     steps:
       - uses: actions/checkout@v4
       
@@ -18,4 +19,4 @@ jobs:
         run: sleep 10
       
       - name: Success
-        run: echo "success"
+        run: exit 1
