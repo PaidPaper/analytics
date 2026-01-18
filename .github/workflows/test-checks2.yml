@@ -8,8 +8,14 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    if: false  # This will always skip
+    if: |
+      github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-test')
     steps:
+      - name: Wait 2 seconds
+        run: sleep 2
+      
+      - name: Run test
+        run: echo "✅ Test check completed"
       # - uses: actions/checkout@v4
       
       # - name: Simple test
@@ -20,9 +26,4 @@ jobs:
       
       # - name: Success
       #   run: exit 1
-      - name: Wait then skip
-        run: |
-          sleep 2
-          exit 0  # exits successfully, showing as complete
-
       
