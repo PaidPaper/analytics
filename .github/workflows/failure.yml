@@ -29,4 +29,4 @@ jobs:
 
 
       - name: Failure
-        run: exit 1
+        run: echo "yay"
