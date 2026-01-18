@@ -18,4 +18,4 @@ jobs:
         run: sleep 10
       
       - name: Success
-        run: echo "success"
+        run: exit 1
