@@ -21,4 +21,4 @@ jobs:
         run: sleep 10
       
       - name: Success
-        run: echo "Test completed successfully after 10 seconds ✓"
+        run: exit 1
