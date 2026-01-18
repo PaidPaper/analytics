@@ -1,0 +1,20 @@
+name: Test Bug Label Workflow
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  bug-label-test:
+    if: github.event.label.name == 'bug'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Label detected
+        run: echo "Bug label was added to PR #${{ github.event.pull_request.number }}"
+      
+      - name: Wait 10 seconds
+        run: sleep 10
+      
+      - name: Success
+        run: echo "Test completed successfully after 10 seconds ✓"
