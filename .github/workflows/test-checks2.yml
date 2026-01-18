@@ -1,206 +1,28 @@
-name: Deploy to Preflight
+name: Test Checks 2
 
-# This workflow runs independently of other checks
-# To make it required: Add it to branch protection rules
-# To make it optional: Leave it out of required status checks
 on:
-  push:
-    branches: [main]
   pull_request:
-    types: [synchronize, opened, reopened, ready_for_review]
-    branches: [main]
-  workflow_dispatch:
-
-env:
-  NODE_VERSION: "22"
+  push:
+    branches: [main, master]
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
-    # Run on push to main or PRs with preflight label
-    if: |
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'preflight'))
-
+    if: false  # This will always skip
     steps:
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_PRIVATE_KEY }}" > ~/.ssh/coagency-key
-          chmod 600 ~/.ssh/coagency-key
-          ssh-keyscan -H kohai.coagency.ai >> ~/.ssh/known_hosts
-
-      - name: Test SSH connection
-        run: |
-          ssh -i ~/.ssh/coagency-key -o ConnectTimeout=10 ec2-user@kohai.coagency.ai "echo 'SSH connection successful'"
-
-      - name: Deploy via git-deploy
-        id: deploy
-        run: |
-          # Run the deploy script and show output in real-time (restart is default behavior)
-          ssh -i ~/.ssh/coagency-key ec2-user@kohai.coagency.ai './coagency/deploy/aws-ec2/git-deploy.sh' 2>&1 | tee /tmp/deploy-output.txt
-
-          # Extract version from captured output
-          if grep -q "Deployed version:" /tmp/deploy-output.txt; then
-            VERSION=$(grep "Deployed version:" /tmp/deploy-output.txt | sed 's/.*Deployed version: //')
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "✅ Deployed version: $VERSION"
-          else
-            echo "⚠️ Could not determine deployed version"
-            echo "version=Unknown" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Run database migrations
-        id: migrations
-        run: |
-          # Run migration check and capture result
-          MIGRATION_RESULT=$(ssh -i ~/.ssh/coagency-key ec2-user@kohai.coagency.ai << 'REMOTE_SCRIPT'
-          cd ~/coagency
-
-          # Check migration status
-          echo "Checking migration status..."
-          if ./run-env pnpm turbo db:migrate:status 2>&1 | grep -q "pending"; then
-            echo "⚠️ Pending migrations detected, running migrations..."
-
-            # Run migrations (forward-only, no rollback on failure)
-            if ./run-env pnpm turbo db:migrate:deploy; then
-              echo "✅ Migrations completed successfully"
-              echo "MIGRATIONS_RUN"
-              exit 0
-            else
-              echo "❌ Migration failed - database schema may be partially updated"
-              echo "Manual intervention required to fix schema and re-run migrations"
-              exit 1
-            fi
-          else
-            echo "✅ All migrations up to date"
-            echo "NO_MIGRATIONS"
-            exit 0
-          fi
-          REMOTE_SCRIPT
-          )
-
-          # Capture exit code
-          MIGRATION_EXIT=$?
-
-          # Output the result
-          echo "$MIGRATION_RESULT"
-
-          # Set output based on result
-          if echo "$MIGRATION_RESULT" | grep -q "MIGRATIONS_RUN"; then
-            echo "migrations_run=true" >> $GITHUB_OUTPUT
-          else
-            echo "migrations_run=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Exit with same code as remote script
-          exit $MIGRATION_EXIT
-
-      - name: Restart services after migration
-        if: steps.migrations.outputs.migrations_run == 'true'
-        run: |
-          echo "Restarting services after database migrations..."
-          ssh -i ~/.ssh/coagency-key ec2-user@kohai.coagency.ai << 'REMOTE_SCRIPT'
-          cd ~/coagency
-
-          # Kill existing screen sessions
-          screen -ls | grep -E "(coagency|preflight-services)" | cut -d. -f1 | xargs -I{} screen -X -S {} quit || true
-
-          # Restart services
-          ./deploy/aws-ec2/git-deploy.sh
-          REMOTE_SCRIPT
-
-      - name: Health check
-        id: health-check
-        run: |
-          # Wait for services to come up and verify they're healthy
-          sleep 10
-
-          ssh -i ~/.ssh/coagency-key ec2-user@kohai.coagency.ai << 'REMOTE_SCRIPT'
-          # Check screen sessions are running
-          echo "Checking screen sessions..."
-          screen -ls | grep -E "(coagency|preflight-services)" || { echo "❌ No screen sessions found"; exit 1; }
-
-          # Check HTTP endpoints
-          echo "Checking HTTP endpoints..."
-          curl -f -s https://kohai.coagency.ai/health || { echo "❌ Health endpoint failed"; exit 1; }
-          curl -f -s https://kohai.coagency.ai/_/context/health || { echo "❌ Context health endpoint failed"; exit 1; }
-
-          echo "✅ Deployment health check passed"
-          REMOTE_SCRIPT
-        continue-on-error: true
-
-      - name: Comment on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const deploySuccess = '${{ steps.deploy.outcome }}' === 'success';
-            const healthSuccess = '${{ steps.health-check.outcome }}' === 'success';
-            const migrationsRun = '${{ steps.migrations.outputs.migrations_run }}' === 'true';
-
-            let status, message;
-            if (deploySuccess && healthSuccess) {
-              // Simple success message
-              const deployedVersion = '${{ steps.deploy.outputs.version }}' || 'Unknown';
-              message = `🛫 **${deployedVersion}** deployed on preflight`;
-              if (migrationsRun) {
-                message += ' (with database migrations)';
-              }
-            } else if (deploySuccess && !healthSuccess) {
-              status = '⚠️';
-              message = 'Deployment completed but health checks failed. Please investigate.';
-            } else {
-              status = '❌';
-              message = 'Deployment failed. Check the workflow logs for details.';
-            }
-
-            // For success, use simple message; for failures, use detailed format
-            let comment;
-            if (deploySuccess && healthSuccess) {
-              comment = message;
-            } else {
-              comment = `${status} ${message}
-
-            [Review](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
-            }
-
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-
-      - name: Deployment summary
-        run: |
-          echo "🎉 Deployment completed successfully!"
-          echo "🌐 Live at: https://kohai.coagency.ai"
-          if [ -n "${{ steps.deploy.outputs.version }}" ] && [ "${{ steps.deploy.outputs.version }}" != "Unknown" ]; then
-            echo "📦 Deployed version: ${{ steps.deploy.outputs.version }}"
-          else
-            echo "⚠️  Version information not available"
-          fi
-
-# name: Test Checks 2
-
-# on:
-#   pull_request:
-#   push:
-#     branches: [main, master]
-
-# jobs:
-#   test:
-#     runs-on: ubuntu-latest
-#     if: false  # This will always skip
-#     steps:
-#       - uses: actions/checkout@v4
+      # - uses: actions/checkout@v4
       
-#       - name: Simple test
-#         run: echo "Running tests..."
+      # - name: Simple test
+      #   run: echo "Running tests..."
       
-#       - name: Wait (to see in-progress status)
-#         run: sleep 10
+      # - name: Wait (to see in-progress status)
+      #   run: sleep 10
       
-#       - name: Success
-#         run: exit 1
+      # - name: Success
+      #   run: exit 1
+      - name: Wait then skip
+        run: |
+          sleep 2
+          exit 0  # exits successfully, showing as complete
+
+      
