@@ -8,14 +8,25 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-test')
     steps:
-      - uses: actions/checkout@v4
+      - name: Wait 2 seconds
+        run: sleep 2
       
-      - name: Simple test
-        run: echo "Running tests..."
+      - name: Run test
+        run: echo "✅ Test check completed"
       
-      - name: Wait (to see in-progress status)
-        run: sleep 15
+    # steps:
+    #   - uses: actions/checkout@v4
       
-      - name: Success
-        run: echo "Tests passed!"
+    #   - name: Simple test
+    #     run: echo "Running tests..."
+      
+    #   - name: Wait (to see in-progress status)
+    #     run: sleep 15
+      
+    #   - name: Success
+    #     run: echo "Tests passed!"
+
+
