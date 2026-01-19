@@ -3,8 +3,4 @@ bert testing!
 Testing timeline api
 
 
-test 3
-
-new
-
-newest
+test
